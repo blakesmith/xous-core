@@ -31,5 +31,16 @@
                 "en-tts": "Basic REPL demo"
             }
         }
+    },
+    "xtotp": {
+        "context_name": "xtotp",
+        "menu_name": {
+            "appmenu.xtotp": {
+                "en": "xtotp 2FA Authenticator",
+                "ja": "",
+                "zh": "",
+                "en-tts": "xtotp 2FA Authenticator"
+            }
+        }
     }
 }
