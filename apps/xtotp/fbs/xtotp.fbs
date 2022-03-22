@@ -1,0 +1,19 @@
+namespace xtotp;
+
+table TotpEntry {
+ // A human readable name for the TOTP entry. IE - 'GMail', or 'GitHub'.
+ name: string;
+
+ // A 'time-step', in seconds. Typical TOTP RFC6238 implementations
+ // default to 30 seconds.
+ step_seconds: uint16;
+
+ // The actual secret, which will be fed into an HMAC function,
+ // along with the current unix timestamp, to produce a TOTP
+ // value
+ secret_hash: [byte];
+
+ // How many digits the one-time password should be truncated to.
+ // Most implementations default to 6.
+ digit_count: uint8;
+}
