@@ -2,11 +2,19 @@
 #![cfg_attr(target_os = "none", no_main)]
 
 use core::fmt::Write;
+use flatbuffers::FlatBufferBuilder;
 use graphics_server::api::GlyphStyle;
 use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, TextView};
 use num_traits::*;
+use pddb::Pddb;
+use std::io::Write as PddbWrite;
+use xtotp_generated::xtotp::{TotpEntry, TotpEntryArgs};
+
+mod xtotp_generated;
 
 pub(crate) const SERVER_NAME_XTOTP: &str = "_Xtotp Authenticator_";
+
+const XTOTP_ENTRIES_DICT: &'static str = "xtotp.otp_entries";
 
 /// Top level application events.
 #[derive(Debug, num_derive::FromPrimitive, num_derive::ToPrimitive)]
@@ -23,6 +31,17 @@ struct Hello {
     gam: gam::Gam,
     _gam_token: [u32; 4],
     screensize: Point,
+}
+
+#[derive(Debug)]
+enum Error {
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::Io(err)
+    }
 }
 
 impl Hello {
@@ -104,6 +123,35 @@ impl Hello {
     }
 }
 
+fn persist_static_totp_entry(pddb: &mut Pddb) -> Result<(), Error> {
+    let mut fb_builder = FlatBufferBuilder::new();
+
+    let static_secret: &[u8] = &[0xDE, 0xAD, 0xBE, 0xEF];
+
+    let args = TotpEntryArgs {
+        name: Some(fb_builder.create_string("Fake Entry")),
+        step_seconds: 30,
+        secret_hash: Some(fb_builder.create_vector(static_secret)),
+        digit_count: 6,
+    };
+
+    let _entry_offset = TotpEntry::create(&mut fb_builder, &args);
+    let serialized = fb_builder.finished_data();
+
+    let mut entry = pddb.get(
+        XTOTP_ENTRIES_DICT,
+        "static_fake_entry",
+        None,
+        true,
+        true,
+        None,
+        Some(|| {}),
+    )?;
+    entry.write(serialized)?;
+    entry.flush()?;
+    Ok(())
+}
+
 #[xous::xous_main]
 fn xmain() -> ! {
     log_server::init_wait().unwrap();
@@ -116,6 +164,9 @@ fn xmain() -> ! {
     let sid = xns
         .register_name(SERVER_NAME_XTOTP, None)
         .expect("can't register server");
+
+    let mut pddb = Pddb::new();
+    persist_static_totp_entry(&mut pddb).expect("Could not persist static / test TOTP entry");
 
     let mut hello = Hello::new(&xns, sid);
 
