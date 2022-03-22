@@ -3582,6 +3582,7 @@ dependencies = [
  "log-server",
  "num-derive",
  "num-traits",
+ "pddb",
  "totp-lite",
  "xous",
  "xous-ipc 0.9.7",

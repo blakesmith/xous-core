@@ -11,7 +11,7 @@ table TotpEntry {
  // The actual secret, which will be fed into an HMAC function,
  // along with the current unix timestamp, to produce a TOTP
  // value
- secret_hash: [byte];
+ secret_hash: [ubyte];
 
  // How many digits the one-time password should be truncated to.
  // Most implementations default to 6.

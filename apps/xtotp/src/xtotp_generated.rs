@@ -63,8 +63,8 @@ impl<'a> TotpEntry<'a> {
     self._tab.get::<u16>(TotpEntry::VT_STEP_SECONDS, Some(0)).unwrap()
   }
   #[inline]
-  pub fn secret_hash(&self) -> Option<&'a [i8]> {
-    self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, i8>>>(TotpEntry::VT_SECRET_HASH, None).map(|v| v.safe_slice())
+  pub fn secret_hash(&self) -> Option<&'a [u8]> {
+    self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(TotpEntry::VT_SECRET_HASH, None).map(|v| v.safe_slice())
   }
   #[inline]
   pub fn digit_count(&self) -> u8 {
@@ -81,7 +81,7 @@ impl flatbuffers::Verifiable for TotpEntry<'_> {
     v.visit_table(pos)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>(&"name", Self::VT_NAME, false)?
      .visit_field::<u16>(&"step_seconds", Self::VT_STEP_SECONDS, false)?
-     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, i8>>>(&"secret_hash", Self::VT_SECRET_HASH, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>(&"secret_hash", Self::VT_SECRET_HASH, false)?
      .visit_field::<u8>(&"digit_count", Self::VT_DIGIT_COUNT, false)?
      .finish();
     Ok(())
@@ -90,7 +90,7 @@ impl flatbuffers::Verifiable for TotpEntry<'_> {
 pub struct TotpEntryArgs<'a> {
     pub name: Option<flatbuffers::WIPOffset<&'a str>>,
     pub step_seconds: u16,
-    pub secret_hash: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, i8>>>,
+    pub secret_hash: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
     pub digit_count: u8,
 }
 impl<'a> Default for TotpEntryArgs<'a> {
@@ -118,7 +118,7 @@ impl<'a: 'b, 'b> TotpEntryBuilder<'a, 'b> {
     self.fbb_.push_slot::<u16>(TotpEntry::VT_STEP_SECONDS, step_seconds, 0);
   }
   #[inline]
-  pub fn add_secret_hash(&mut self, secret_hash: flatbuffers::WIPOffset<flatbuffers::Vector<'b , i8>>) {
+  pub fn add_secret_hash(&mut self, secret_hash: flatbuffers::WIPOffset<flatbuffers::Vector<'b , u8>>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(TotpEntry::VT_SECRET_HASH, secret_hash);
   }
   #[inline]
