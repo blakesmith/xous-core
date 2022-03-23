@@ -123,25 +123,29 @@ impl Xtotp {
     }
 }
 
-fn persist_static_totp_entry(pddb: &mut Pddb) -> Result<(), Error> {
-    let mut fb_builder = FlatBufferBuilder::new();
-
-    let static_secret: &[u8] = &[0xDE, 0xAD, 0xBE, 0xEF];
-
+fn persist_totp_entry(
+    pddb: &mut Pddb,
+    fbb: &mut FlatBufferBuilder,
+    name: &str,
+    step_seconds: u16,
+    secret: &[u8],
+    digit_count: u8,
+    algorithm: TotpAlgorithm,
+) -> Result<(), Error> {
     let args = TotpEntryArgs {
-        name: Some(fb_builder.create_string("Fake Entry")),
-        step_seconds: 30,
-        secret_hash: Some(fb_builder.create_vector(static_secret)),
-        digit_count: 6,
-        algorithm: TotpAlgorithm::HmacSha256,
+        name: Some(fbb.create_string(name)),
+        step_seconds: step_seconds,
+        secret_hash: Some(fbb.create_vector(secret)),
+        digit_count: digit_count,
+        algorithm: algorithm,
     };
 
-    let _entry_offset = TotpEntry::create(&mut fb_builder, &args);
-    let serialized = fb_builder.finished_data();
+    let _entry_offset = TotpEntry::create(fbb, &args);
+    let serialized = fbb.finished_data();
 
     let mut entry = pddb.get(
         XTOTP_ENTRIES_DICT,
-        "static_fake_entry",
+        name,
         None,
         true,
         true,
@@ -168,7 +172,18 @@ fn xmain() -> ! {
 
     let mut pddb = Pddb::new();
     pddb.is_mounted_blocking(None);
-    persist_static_totp_entry(&mut pddb).expect("Could not persist static / test TOTP entry");
+
+    let mut fbb = FlatBufferBuilder::new();
+    persist_totp_entry(
+        &mut pddb,
+        &mut fbb,
+        "Fake Entry",
+        30,
+        &[0xDE, 0xAD, 0xDE, 0xEF],
+        6,
+        TotpAlgorithm::HmacSha256,
+    )
+    .expect("Could not persist static / test TOTP entry");
 
     let mut xtotp = Xtotp::new(&xns, sid);
 
