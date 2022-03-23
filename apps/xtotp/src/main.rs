@@ -2,12 +2,12 @@
 #![cfg_attr(target_os = "none", no_main)]
 
 use core::fmt::Write;
-use flatbuffers::FlatBufferBuilder;
+use flatbuffers::{FlatBufferBuilder, Follow};
 use graphics_server::api::GlyphStyle;
 use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, TextView};
 use num_traits::*;
 use pddb::Pddb;
-use std::io::Write as PddbWrite;
+use std::io::{Read, Write as PddbWrite};
 use xtotp_generated::xtotp::{TotpAlgorithm, TotpEntry, TotpEntryArgs};
 
 mod xtotp_generated;
@@ -29,8 +29,10 @@ pub(crate) enum XtotpOp {
 struct Xtotp {
     content: Gid,
     gam: gam::Gam,
+    db: Pddb,
     _gam_token: [u32; 4],
     screensize: Point,
+    read_buf: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -45,7 +47,7 @@ impl From<std::io::Error> for Error {
 }
 
 impl Xtotp {
-    fn new(xns: &xous_names::XousNames, sid: xous::SID) -> Self {
+    fn new(xns: &xous_names::XousNames, sid: xous::SID, db: Pddb) -> Self {
         let gam = gam::Gam::new(&xns).expect("Can't connect to GAM");
         let gam_token = gam
             .register_ux(gam::UxRegistration {
@@ -73,6 +75,8 @@ impl Xtotp {
             _gam_token: gam_token,
             content,
             screensize,
+            db,
+            read_buf: Vec::new(),
         }
     }
 
@@ -96,7 +100,11 @@ impl Xtotp {
 
     /// Redraw the text view onto the screen.
     fn redraw(&mut self) {
+        self.read_buf.clear();
         self.clear_area();
+
+        let entry = lookup_totp_entry(&mut self.db, "Fake Entry", &mut self.read_buf)
+            .expect("Could not lookup Totp entry");
 
         let mut text_view = TextView::new(
             self.content,
@@ -114,7 +122,8 @@ impl Xtotp {
         text_view.clear_area = true;
         text_view.rounded_border = Some(3);
         text_view.style = GlyphStyle::Regular;
-        write!(text_view.text, "{}", "Hello Xtotp!").expect("Could not write to text view");
+        write!(text_view.text, "{}", entry.name().unwrap_or("Entry"))
+            .expect("Could not write to text view");
 
         self.gam
             .post_textview(&mut text_view)
@@ -124,7 +133,7 @@ impl Xtotp {
 }
 
 fn persist_totp_entry(
-    pddb: &mut Pddb,
+    db: &mut Pddb,
     fbb: &mut FlatBufferBuilder,
     name: &str,
     step_seconds: u16,
@@ -143,7 +152,7 @@ fn persist_totp_entry(
     let _entry_offset = TotpEntry::create(fbb, &args);
     let serialized = fbb.finished_data();
 
-    let mut entry = pddb.get(
+    let mut entry = db.get(
         XTOTP_ENTRIES_DICT,
         name,
         None,
@@ -155,6 +164,25 @@ fn persist_totp_entry(
     entry.write(serialized)?;
     entry.flush()?;
     Ok(())
+}
+
+fn lookup_totp_entry<'buf>(
+    db: &mut Pddb,
+    name: &str,
+    buf: &'buf mut Vec<u8>,
+) -> Result<TotpEntry<'buf>, Error> {
+    let mut entry = db.get(
+        XTOTP_ENTRIES_DICT,
+        name,
+        None,
+        false,
+        false,
+        None,
+        Some(|| {}),
+    )?;
+
+    entry.read_to_end(buf)?;
+    Ok(TotpEntry::follow(buf, 0))
 }
 
 #[xous::xous_main]
@@ -185,7 +213,7 @@ fn xmain() -> ! {
     )
     .expect("Could not persist static / test TOTP entry");
 
-    let mut xtotp = Xtotp::new(&xns, sid);
+    let mut xtotp = Xtotp::new(&xns, sid, pddb);
 
     loop {
         let msg = xous::receive_message(sid).unwrap();
