@@ -156,7 +156,7 @@ fn persist_static_totp_entry(pddb: &mut Pddb) -> Result<(), Error> {
 fn xmain() -> ! {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
-    log::info!("Hello world PID is {}", xous::process::id());
+    log::info!("Xtotp PID is {}", xous::process::id());
 
     let xns = xous_names::XousNames::new().unwrap();
 
@@ -166,6 +166,7 @@ fn xmain() -> ! {
         .expect("can't register server");
 
     let mut pddb = Pddb::new();
+    pddb.is_mounted_blocking(None);
     persist_static_totp_entry(&mut pddb).expect("Could not persist static / test TOTP entry");
 
     let mut hello = Hello::new(&xns, sid);
