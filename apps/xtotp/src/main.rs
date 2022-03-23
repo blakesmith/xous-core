@@ -18,7 +18,7 @@ const XTOTP_ENTRIES_DICT: &'static str = "xtotp.otp_entries";
 
 /// Top level application events.
 #[derive(Debug, num_derive::FromPrimitive, num_derive::ToPrimitive)]
-pub(crate) enum HelloOp {
+pub(crate) enum XtotpOp {
     /// Redraw the screen
     Redraw = 0,
 
@@ -26,7 +26,7 @@ pub(crate) enum HelloOp {
     Quit,
 }
 
-struct Hello {
+struct Xtotp {
     content: Gid,
     gam: gam::Gam,
     _gam_token: [u32; 4],
@@ -44,7 +44,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl Hello {
+impl Xtotp {
     fn new(xns: &xous_names::XousNames, sid: xous::SID) -> Self {
         let gam = gam::Gam::new(&xns).expect("Can't connect to GAM");
         let gam_token = gam
@@ -53,7 +53,7 @@ impl Hello {
                 ux_type: gam::UxType::Chat,
                 predictor: None,
                 listener: sid.to_array(),
-                redraw_id: HelloOp::Redraw.to_u32().unwrap(),
+                redraw_id: XtotpOp::Redraw.to_u32().unwrap(),
                 gotinput_id: None,
                 audioframe_id: None,
                 rawkeys_id: None,
@@ -169,18 +169,18 @@ fn xmain() -> ! {
     pddb.is_mounted_blocking(None);
     persist_static_totp_entry(&mut pddb).expect("Could not persist static / test TOTP entry");
 
-    let mut hello = Hello::new(&xns, sid);
+    let mut xtotp = Xtotp::new(&xns, sid);
 
     loop {
         let msg = xous::receive_message(sid).unwrap();
         log::debug!("Got message: {:?}", msg);
 
         match FromPrimitive::from_usize(msg.body.id()) {
-            Some(HelloOp::Redraw) => {
+            Some(XtotpOp::Redraw) => {
                 log::debug!("Got redraw");
-                hello.redraw();
+                xtotp.redraw();
             }
-            Some(HelloOp::Quit) => {
+            Some(XtotpOp::Quit) => {
                 log::info!("Quitting application");
                 break;
             }
