@@ -103,14 +103,16 @@ impl Xtotp {
         self.read_buf.clear();
         self.clear_area();
 
-        let entry = lookup_totp_entry(&mut self.db, "Fake Entry", &mut self.read_buf)
-            .expect("Could not lookup Totp entry");
+        let entry_name = match lookup_totp_entry(&mut self.db, "Fake Entry", &mut self.read_buf) {
+            Ok(entry) => entry.name().unwrap_or("Entry").to_string(),
+            Err(err) => format!("{:?}", err),
+        };
 
         let mut text_view = TextView::new(
             self.content,
             TextBounds::GrowableFromBr(
                 Point::new(
-                    self.screensize.x - (self.screensize.x / 2),
+                    self.screensize.x - 10,
                     self.screensize.y - (self.screensize.y / 2),
                 ),
                 (self.screensize.x / 5 * 4) as u16,
@@ -122,8 +124,7 @@ impl Xtotp {
         text_view.clear_area = true;
         text_view.rounded_border = Some(3);
         text_view.style = GlyphStyle::Regular;
-        write!(text_view.text, "{}", entry.name().unwrap_or("Entry"))
-            .expect("Could not write to text view");
+        write!(text_view.text, "{}", entry_name).expect("Could not write to text view");
 
         self.gam
             .post_textview(&mut text_view)
