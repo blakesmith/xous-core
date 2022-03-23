@@ -17,6 +17,97 @@ pub mod xtotp {
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_TOTP_ALGORITHM: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_TOTP_ALGORITHM: i8 = 2;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_TOTP_ALGORITHM: [TotpAlgorithm; 3] = [
+  TotpAlgorithm::HmacSha1,
+  TotpAlgorithm::HmacSha256,
+  TotpAlgorithm::HmacSha512,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct TotpAlgorithm(pub i8);
+#[allow(non_upper_case_globals)]
+impl TotpAlgorithm {
+  pub const HmacSha1: Self = Self(0);
+  pub const HmacSha256: Self = Self(1);
+  pub const HmacSha512: Self = Self(2);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 2;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::HmacSha1,
+    Self::HmacSha256,
+    Self::HmacSha512,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::HmacSha1 => Some("HmacSha1"),
+      Self::HmacSha256 => Some("HmacSha256"),
+      Self::HmacSha512 => Some("HmacSha512"),
+      _ => None,
+    }
+  }
+}
+impl std::fmt::Debug for TotpAlgorithm {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for TotpAlgorithm {
+  type Inner = Self;
+  #[inline]
+  fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe {
+      flatbuffers::read_scalar_at::<i8>(buf, loc)
+    };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for TotpAlgorithm {
+    type Output = TotpAlgorithm;
+    #[inline]
+    fn push(&self, dst: &mut [u8], _rest: &[u8]) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for TotpAlgorithm {
+  #[inline]
+  fn to_little_endian(self) -> Self {
+    let b = i8::to_le(self.0);
+    Self(b)
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(self) -> Self {
+    let b = i8::from_le(self.0);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for TotpAlgorithm {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for TotpAlgorithm {}
 pub enum TotpEntryOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -45,6 +136,7 @@ impl<'a> TotpEntry<'a> {
       if let Some(x) = args.secret_hash { builder.add_secret_hash(x); }
       if let Some(x) = args.name { builder.add_name(x); }
       builder.add_step_seconds(args.step_seconds);
+      builder.add_algorithm(args.algorithm);
       builder.add_digit_count(args.digit_count);
       builder.finish()
     }
@@ -53,6 +145,7 @@ impl<'a> TotpEntry<'a> {
     pub const VT_STEP_SECONDS: flatbuffers::VOffsetT = 6;
     pub const VT_SECRET_HASH: flatbuffers::VOffsetT = 8;
     pub const VT_DIGIT_COUNT: flatbuffers::VOffsetT = 10;
+    pub const VT_ALGORITHM: flatbuffers::VOffsetT = 12;
 
   #[inline]
   pub fn name(&self) -> Option<&'a str> {
@@ -70,6 +163,10 @@ impl<'a> TotpEntry<'a> {
   pub fn digit_count(&self) -> u8 {
     self._tab.get::<u8>(TotpEntry::VT_DIGIT_COUNT, Some(0)).unwrap()
   }
+  #[inline]
+  pub fn algorithm(&self) -> TotpAlgorithm {
+    self._tab.get::<TotpAlgorithm>(TotpEntry::VT_ALGORITHM, Some(TotpAlgorithm::HmacSha1)).unwrap()
+  }
 }
 
 impl flatbuffers::Verifiable for TotpEntry<'_> {
@@ -83,6 +180,7 @@ impl flatbuffers::Verifiable for TotpEntry<'_> {
      .visit_field::<u16>(&"step_seconds", Self::VT_STEP_SECONDS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>(&"secret_hash", Self::VT_SECRET_HASH, false)?
      .visit_field::<u8>(&"digit_count", Self::VT_DIGIT_COUNT, false)?
+     .visit_field::<TotpAlgorithm>(&"algorithm", Self::VT_ALGORITHM, false)?
      .finish();
     Ok(())
   }
@@ -92,6 +190,7 @@ pub struct TotpEntryArgs<'a> {
     pub step_seconds: u16,
     pub secret_hash: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
     pub digit_count: u8,
+    pub algorithm: TotpAlgorithm,
 }
 impl<'a> Default for TotpEntryArgs<'a> {
     #[inline]
@@ -101,6 +200,7 @@ impl<'a> Default for TotpEntryArgs<'a> {
             step_seconds: 0,
             secret_hash: None,
             digit_count: 0,
+            algorithm: TotpAlgorithm::HmacSha1,
         }
     }
 }
@@ -126,6 +226,10 @@ impl<'a: 'b, 'b> TotpEntryBuilder<'a, 'b> {
     self.fbb_.push_slot::<u8>(TotpEntry::VT_DIGIT_COUNT, digit_count, 0);
   }
   #[inline]
+  pub fn add_algorithm(&mut self, algorithm: TotpAlgorithm) {
+    self.fbb_.push_slot::<TotpAlgorithm>(TotpEntry::VT_ALGORITHM, algorithm, TotpAlgorithm::HmacSha1);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> TotpEntryBuilder<'a, 'b> {
     let start = _fbb.start_table();
     TotpEntryBuilder {
@@ -147,6 +251,7 @@ impl std::fmt::Debug for TotpEntry<'_> {
       ds.field("step_seconds", &self.step_seconds());
       ds.field("secret_hash", &self.secret_hash());
       ds.field("digit_count", &self.digit_count());
+      ds.field("algorithm", &self.algorithm());
       ds.finish()
   }
 }

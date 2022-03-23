@@ -8,7 +8,7 @@ use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, 
 use num_traits::*;
 use pddb::Pddb;
 use std::io::Write as PddbWrite;
-use xtotp_generated::xtotp::{TotpEntry, TotpEntryArgs};
+use xtotp_generated::xtotp::{TotpAlgorithm, TotpEntry, TotpEntryArgs};
 
 mod xtotp_generated;
 
@@ -133,6 +133,7 @@ fn persist_static_totp_entry(pddb: &mut Pddb) -> Result<(), Error> {
         step_seconds: 30,
         secret_hash: Some(fb_builder.create_vector(static_secret)),
         digit_count: 6,
+        algorithm: TotpAlgorithm::HmacSha256,
     };
 
     let _entry_offset = TotpEntry::create(&mut fb_builder, &args);
