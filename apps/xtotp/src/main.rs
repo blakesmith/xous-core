@@ -8,7 +8,6 @@ use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, 
 use num_traits::*;
 use pddb::Pddb;
 use std::io::{Read, Write as PddbWrite};
-use xtotp_generated::xtotp::{TotpAlgorithm, TotpEntry, TotpEntryArgs};
 
 mod xtotp_generated;
 
@@ -32,7 +31,24 @@ struct Xtotp {
     db: Pddb,
     _gam_token: [u32; 4],
     screensize: Point,
-    read_buf: Vec<u8>,
+
+    totp_entries: Vec<TotpEntry>,
+}
+
+#[derive(Debug, Clone)]
+enum TotpAlgorithm {
+    HmacSha1,
+    HmacSha256,
+    HmacSha512,
+}
+
+#[derive(Debug)]
+struct TotpEntry {
+    name: String,
+    step_seconds: u16,
+    secret_hash: Vec<u8>,
+    digit_count: u8,
+    algorithm: TotpAlgorithm,
 }
 
 #[derive(Debug)]
@@ -70,13 +86,30 @@ impl Xtotp {
         let screensize = gam
             .get_canvas_bounds(content)
             .expect("Could not get canvas dimensions");
+
+        let totp_entries = vec![
+            TotpEntry {
+                name: "Fake Entry 1".to_string(),
+                step_seconds: 30,
+                secret_hash: vec![0xDE, 0xAD, 0xBE, 0xEF],
+                digit_count: 6,
+                algorithm: TotpAlgorithm::HmacSha256,
+            },
+            TotpEntry {
+                name: "Fake Entry 2".to_string(),
+                step_seconds: 30,
+                secret_hash: vec![0xDE, 0xAD, 0xBE, 0xEF],
+                digit_count: 6,
+                algorithm: TotpAlgorithm::HmacSha256,
+            },
+        ];
         Self {
             gam,
             _gam_token: gam_token,
             content,
             screensize,
             db,
-            read_buf: Vec::new(),
+            totp_entries,
         }
     }
 
@@ -100,90 +133,31 @@ impl Xtotp {
 
     /// Redraw the text view onto the screen.
     fn redraw(&mut self) {
-        self.read_buf.clear();
         self.clear_area();
 
-        let entry_name = match lookup_totp_entry(&mut self.db, "Fake Entry", &mut self.read_buf) {
-            Ok(entry) => entry.name().unwrap_or("Entry").to_string(),
-            Err(err) => format!("{:?}", err),
-        };
-
-        let mut text_view = TextView::new(
-            self.content,
-            TextBounds::GrowableFromBr(
-                Point::new(
-                    self.screensize.x - 10,
-                    self.screensize.y - (self.screensize.y / 2),
+        for (i, entry) in self.totp_entries.iter().enumerate() {
+            let mut text_view = TextView::new(
+                self.content,
+                TextBounds::GrowableFromTl(
+                    Point::new(0, (i * 20) as i16),
+                    (self.screensize.x / 5 * 4) as u16,
                 ),
-                (self.screensize.x / 5 * 4) as u16,
-            ),
-        );
+            );
 
-        text_view.border_width = 1;
-        text_view.draw_border = true;
-        text_view.clear_area = true;
-        text_view.rounded_border = Some(3);
-        text_view.style = GlyphStyle::Regular;
-        write!(text_view.text, "{}", entry_name).expect("Could not write to text view");
+            text_view.border_width = 1;
+            text_view.draw_border = true;
+            text_view.clear_area = true;
+            text_view.rounded_border = Some(3);
+            text_view.style = GlyphStyle::Regular;
+            write!(text_view.text, "{}", entry.name).expect("Could not write to text view");
 
-        self.gam
-            .post_textview(&mut text_view)
-            .expect("Could not render text view");
+            self.gam
+                .post_textview(&mut text_view)
+                .expect("Could not render text view");
+        }
+
         self.gam.redraw().expect("Could not redraw screen");
     }
-}
-
-fn persist_totp_entry(
-    db: &mut Pddb,
-    fbb: &mut FlatBufferBuilder,
-    name: &str,
-    step_seconds: u16,
-    secret: &[u8],
-    digit_count: u8,
-    algorithm: TotpAlgorithm,
-) -> Result<(), Error> {
-    let args = TotpEntryArgs {
-        name: Some(fbb.create_string(name)),
-        step_seconds: step_seconds,
-        secret_hash: Some(fbb.create_vector(secret)),
-        digit_count: digit_count,
-        algorithm: algorithm,
-    };
-
-    let _entry_offset = TotpEntry::create(fbb, &args);
-    let serialized = fbb.finished_data();
-
-    let mut entry = db.get(
-        XTOTP_ENTRIES_DICT,
-        name,
-        None,
-        true,
-        true,
-        None,
-        Some(|| {}),
-    )?;
-    entry.write(serialized)?;
-    entry.flush()?;
-    Ok(())
-}
-
-fn lookup_totp_entry<'buf>(
-    db: &mut Pddb,
-    name: &str,
-    buf: &'buf mut Vec<u8>,
-) -> Result<TotpEntry<'buf>, Error> {
-    let mut entry = db.get(
-        XTOTP_ENTRIES_DICT,
-        name,
-        None,
-        false,
-        false,
-        None,
-        Some(|| {}),
-    )?;
-
-    entry.read_to_end(buf)?;
-    Ok(TotpEntry::follow(buf, 0))
 }
 
 #[xous::xous_main]
@@ -201,18 +175,6 @@ fn xmain() -> ! {
 
     let mut pddb = Pddb::new();
     pddb.is_mounted_blocking(None);
-
-    let mut fbb = FlatBufferBuilder::new();
-    persist_totp_entry(
-        &mut pddb,
-        &mut fbb,
-        "Fake Entry",
-        30,
-        &[0xDE, 0xAD, 0xDE, 0xEF],
-        6,
-        TotpAlgorithm::HmacSha256,
-    )
-    .expect("Could not persist static / test TOTP entry");
 
     let mut xtotp = Xtotp::new(&xns, sid, pddb);
 
