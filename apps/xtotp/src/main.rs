@@ -7,7 +7,10 @@ use graphics_server::api::GlyphStyle;
 use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, TextView};
 use num_traits::*;
 use pddb::Pddb;
-use std::io::{Read, Write as PddbWrite};
+use std::{
+    io::{Read, Write as PddbWrite},
+    time::{SystemTime, SystemTimeError},
+};
 
 mod xtotp_generated;
 
@@ -60,6 +63,12 @@ impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Error::Io(err)
     }
+}
+
+fn get_current_unix_time() -> Result<u64, SystemTimeError> {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
 }
 
 impl Xtotp {
@@ -135,6 +144,8 @@ impl Xtotp {
     fn redraw(&mut self) {
         self.clear_area();
 
+        let current_ts = get_current_unix_time().unwrap_or(0);
+
         for (i, entry) in self.totp_entries.iter().enumerate() {
             let mut text_view = TextView::new(
                 self.content,
@@ -149,7 +160,8 @@ impl Xtotp {
             text_view.clear_area = true;
             text_view.rounded_border = Some(3);
             text_view.style = GlyphStyle::Regular;
-            write!(text_view.text, "{}", entry.name).expect("Could not write to text view");
+            write!(text_view.text, "{}: {}", entry.name, current_ts)
+                .expect("Could not write to text view");
 
             self.gam
                 .post_textview(&mut text_view)
