@@ -2,11 +2,14 @@
 #![cfg_attr(target_os = "none", no_main)]
 
 use core::fmt::Write;
+use crypto_common::InvalidLength;
 use flatbuffers::{FlatBufferBuilder, Follow};
 use graphics_server::api::GlyphStyle;
 use graphics_server::{DrawStyle, Gid, PixelColor, Point, Rectangle, TextBounds, TextView};
+use hmac::{Hmac, Mac};
 use num_traits::*;
 use pddb::Pddb;
+use sha1::Sha1;
 use std::{
     io::{Read, Write as PddbWrite},
     time::{SystemTime, SystemTimeError},
@@ -38,7 +41,7 @@ struct Xtotp {
     totp_entries: Vec<TotpEntry>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum TotpAlgorithm {
     HmacSha1,
     HmacSha256,
@@ -49,7 +52,7 @@ enum TotpAlgorithm {
 struct TotpEntry {
     name: String,
     step_seconds: u16,
-    secret_hash: Vec<u8>,
+    shared_secret: Vec<u8>,
     digit_count: u8,
     algorithm: TotpAlgorithm,
 }
@@ -57,6 +60,7 @@ struct TotpEntry {
 #[derive(Debug)]
 enum Error {
     Io(std::io::Error),
+    DigestLength(InvalidLength),
 }
 
 impl From<std::io::Error> for Error {
@@ -65,10 +69,57 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<InvalidLength> for Error {
+    fn from(err: InvalidLength) -> Self {
+        Error::DigestLength(err)
+    }
+}
+
 fn get_current_unix_time() -> Result<u64, SystemTimeError> {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
+}
+
+fn unpack_u64(v: u64) -> [u8; 8] {
+    let mask = 0x00000000000000ff;
+    let mut bytes: [u8; 8] = [0; 8];
+    (0..8).for_each(|i| bytes[7 - i] = (mask & (v >> (i * 8))) as u8);
+    bytes
+}
+
+fn generate_hmac_bytes(unix_timestamp: u64, totp_entry: &TotpEntry) -> Result<Vec<u8>, Error> {
+    let mut computed_hmac = Vec::new();
+    match totp_entry.algorithm {
+        // The OpenTitan HMAC core does not support hmac-sha1. Fall back to
+        // a software implementation.
+        TotpAlgorithm::HmacSha1 => {
+            let mut mac: Hmac<Sha1> = Hmac::new_from_slice(&totp_entry.shared_secret)?;
+            mac.update(&unpack_u64(unix_timestamp / totp_entry.step_seconds as u64));
+            let hash: &[u8] = &mac.finalize().into_bytes();
+            computed_hmac.extend_from_slice(hash);
+        }
+        algorithm => todo!(),
+    }
+
+    Ok(computed_hmac)
+}
+
+fn generate_totp_code(unix_timestamp: u64, totp_entry: &TotpEntry) -> Result<String, Error> {
+    let hash = generate_hmac_bytes(unix_timestamp, totp_entry)?;
+    let offset: usize = (hash.last().unwrap_or(&0) & 0xf) as usize;
+    let binary: u64 = (((hash[offset] & 0x7f) as u64) << 24)
+        | ((hash[offset + 1] as u64) << 16)
+        | ((hash[offset + 2] as u64) << 8)
+        | (hash[offset + 3] as u64);
+
+    let truncated_code = format!(
+        "{:01$}",
+        binary % (10_u64.pow(totp_entry.digit_count as u32)),
+        totp_entry.digit_count as usize
+    );
+
+    Ok(truncated_code)
 }
 
 impl Xtotp {
@@ -98,18 +149,18 @@ impl Xtotp {
 
         let totp_entries = vec![
             TotpEntry {
-                name: "Fake Entry 1".to_string(),
+                name: "GitHub".to_string(),
                 step_seconds: 30,
-                secret_hash: vec![0xDE, 0xAD, 0xBE, 0xEF],
+                shared_secret: vec![0xDE, 0xAD, 0xBE, 0xEF],
                 digit_count: 6,
-                algorithm: TotpAlgorithm::HmacSha256,
+                algorithm: TotpAlgorithm::HmacSha1,
             },
             TotpEntry {
-                name: "Fake Entry 2".to_string(),
+                name: "Google".to_string(),
                 step_seconds: 30,
-                secret_hash: vec![0xDE, 0xAD, 0xBE, 0xEF],
+                shared_secret: vec![0xDE, 0xAD, 0xBE, 0xED],
                 digit_count: 6,
-                algorithm: TotpAlgorithm::HmacSha256,
+                algorithm: TotpAlgorithm::HmacSha1,
             },
         ];
         Self {
@@ -147,6 +198,7 @@ impl Xtotp {
         let current_ts = get_current_unix_time().unwrap_or(0);
 
         for (i, entry) in self.totp_entries.iter().enumerate() {
+            let totp_code = generate_totp_code(current_ts, entry).expect("Could not get totp code");
             let mut text_view = TextView::new(
                 self.content,
                 TextBounds::GrowableFromTl(
@@ -160,7 +212,7 @@ impl Xtotp {
             text_view.clear_area = true;
             text_view.rounded_border = Some(3);
             text_view.style = GlyphStyle::Regular;
-            write!(text_view.text, "{}: {}", entry.name, current_ts)
+            write!(text_view.text, "{}: {}", entry.name, totp_code)
                 .expect("Could not write to text view");
 
             self.gam
